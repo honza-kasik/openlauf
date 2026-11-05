@@ -54,10 +54,9 @@ flutter test
 flutter build apk --debug
 ```
 
-Install `build/app/outputs/flutter-apk/app-debug.apk` on the Pixel 9. CI runs
-the same checks and uploads the debug APK as an artifact. A second macOS job
-builds the iOS simulator app without code signing. The workflow assumes
-this directory is the root of the published repository.
+Install `build/app/outputs/flutter-apk/app-debug.apk` on the Pixel 9. CI uses a
+standalone Dart SDK to analyze and test the protocol package on pull requests
+or manual runs. Run Flutter checks and platform builds locally.
 
 For a signed release, create your own signing key outside the repository and
 set `android/key.properties` with `storeFile`, `storePassword`, `keyAlias`, and

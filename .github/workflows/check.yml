@@ -1,39 +1,17 @@
-name: Checks
-on: [push, pull_request]
+name: Protocol checks
+on: [pull_request, workflow_dispatch]
 jobs:
-  test-and-build:
+  test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.7'
-          cache: true
-      - run: flutter pub get
-      - run: dart pub get && dart test
+    defaults:
+      run:
         working-directory: packages/noventa_protocol
-      - run: flutter analyze
-      - run: flutter test
-      - run: flutter build apk --debug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openlauf-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-  ios-build:
-    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: dart-lang/setup-dart@v1
         with:
-          flutter-version: '3.47.7'
-          cache: true
-      - run: flutter pub get
-      - run: flutter build ios --simulator --debug --no-codesign
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openlauf-ios-simulator
-          path: build/ios/iphonesimulator/Runner.app
+          sdk: '3.13.5'
+      - run: dart pub get --enforce-lockfile
+      - run: |
+          dart analyze
+          dart test
