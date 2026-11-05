@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="18 18 72 72">
+  <title>OpenLauf</title>
+  <rect id="background" x="18" y="18" width="72" height="72" fill="#073E43" />
+  <g id="mark">
+    <path fill="#59E3CE" d="M54 24 C49 34 32 48 32 61 C32 74 42 83 54 83 C66 83 76 74 76 61 C76 48 59 34 54 24 Z" />
+    <path fill="#073E43" d="M39 58 C45 52 51 52 57 57 C63 62 66 62 70 58 L70 65 C64 69 59 67 54 63 C49 59 45 59 39 65 Z" />
+  </g>
+</svg>
