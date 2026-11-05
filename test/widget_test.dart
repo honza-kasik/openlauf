@@ -28,7 +28,8 @@ void main() {
     expect(ble.writes.where((f) => f.command == 0x26).single.payload, [5, 0]);
     gate.complete();
     await operation;
-    await model.pause();
+    // Stream cleanup needs the real async zone rather than the widget test clock.
+    await tester.runAsync(model.pause);
   });
   testWidgets('slider previews do not write until drag ends', (tester) async {
     final writes = <double>[];

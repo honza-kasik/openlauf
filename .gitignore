@@ -26,6 +26,7 @@ migrate_working_dir/
 .aws/
 .codex/
 .agents/
+.serena/
 
 # IntelliJ related
 *.iml

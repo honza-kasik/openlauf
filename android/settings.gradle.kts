@@ -19,8 +19,10 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.9.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+    id("com.android.application") version "9.5.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.4.21" apply false
+    // The BLE plugin still requests Protobuf 0.9.4, which cannot configure AGP 9 variants.
+    id("com.google.protobuf") version "0.10.1" apply false
 }
 
 include(":app")

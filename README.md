@@ -22,7 +22,7 @@ performed. Not affiliated with or endorsed by LAUFEN.**
 - Redacted diagnostic copy: metadata only, never device identifiers or payloads.
 
 The UI, protocol and connection lifecycle are shared by Android and iOS.
-`ReactiveBleBackend` uses `flutter_reactive_ble` 5.5.0 for both platforms;
+`ReactiveBleBackend` uses `flutter_reactive_ble` 5.6.0 for both platforms;
 `PluginBleTransport` implements the testable `BleTransport` contract in pure Dart.
 Android's MainActivity and iOS's AppDelegate only register Flutter plugins.
 No custom Kotlin or Swift Bluetooth implementation is needed. Device IDs are
@@ -36,10 +36,10 @@ and reads state without replaying actions.
 
 ## Build and test
 
-Flutter 3.41.6 / Dart 3.11.4, JDK 17 or 21, Android SDK 36, Gradle 8.11.1.
+Flutter 3.47.7 / Dart 3.13.5, JDK 17 or 21, Android SDK 37, Gradle 9.8.2,
+Android Gradle Plugin 9.5.1, Kotlin 2.4.21.
 Run `flutter pub get` with network access to fetch the dependencies in
-`pubspec.lock`. BLE plugin 5.5.0 supports this Flutter SDK; 5.6.0 requires a newer
-Flutter SDK through its native implementation.
+`pubspec.lock`. BLE plugin 5.6.0 supports AGP 9 and Android SDK 37.
 Use a checkout path without apostrophes: the Dart test runner currently generates
 invalid imports for such paths. Android SDK/Flutter/pub/Gradle caches must be writable.
 
@@ -109,15 +109,12 @@ Shared Riva dryer/flush/production commands are not advertised as Navia features
 Manufacturer cloud accounts, firmware flashing and original graphics are not included.
 
 Local verification: 44 pure Dart protocol/session/transport tests and all 18
-Flutter controller/backend/widget tests passed. Whole-app analysis and a debug
-Flutter bundle build also passed. Tests cover write failures and stale replies,
+Flutter controller/backend/widget tests passed. Whole-app analysis and an Android
+debug APK build also passed. Tests cover write failures and stale replies,
 priority Stop, descaling guards, cancellation, reconnects and manufacturer-only
 advertisements. Flutter tests inject a fake BLE transport or plugin facade.
-The standard `flutter test` launcher cannot bind a local socket in this sandbox;
-the same test files were compiled and run directly with `flutter_tester` and a
-live test binding, without a VM service. The dependency lockfile is resolved.
-Android APK builds, iOS builds and physical BLE/descaling acceptance remain
-unverified; iOS builds require macOS/Xcode.
+The debug APK was installed on a Pixel 9. Physical BLE/descaling acceptance and
+iOS builds remain unverified; iOS builds require macOS/Xcode.
 
 ## App icon
 
