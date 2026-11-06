@@ -1,10 +1,22 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navia_control/controller.dart';
 import 'package:navia_control/main.dart';
 import 'package:noventa_protocol/noventa_protocol.dart';
+
 import 'support/fake_mobile_ble.dart';
+
+class _ResetModel extends AppModel {
+  _ResetModel({required super.ble});
+  final resets = <DeviceReset>[];
+
+  @override
+  Future<void> resetDevice(DeviceReset kind) async {
+    resets.add(kind);
+  }
+}
 
 void main() {
   testWidgets('Stop stays enabled while an ordinary operation is busy', (
@@ -87,7 +99,66 @@ void main() {
     await tester.tap(find.text('Diagnostika'));
     await tester.pumpAndSettle();
     expect(find.text('Firmware: —'), findsOneWidget);
+    for (final label in ['Resetovat Bluetooth', 'Obnovit tovární nastavení']) {
+      final reset = find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((widget) => widget is OutlinedButton),
+      );
+      await tester.scrollUntilVisible(reset, 250);
+      final button = tester.widget<OutlinedButton>(reset);
+      expect(button.onPressed, isNull);
+    }
   });
+
+  for (final kind in DeviceReset.values) {
+    testWidgets('${kind.name} reset requires confirmation before sending', (
+      tester,
+    ) async {
+      final ble = FakeMobileBle();
+      final session = NaviaClient(ble)
+        ..info = DeviceInfo('test', 'ARTICLE', 'SYNTHETIC', 2, 0)
+        ..state = DeviceState(2, 0, 0, 0, 0);
+      final model = _ResetModel(ble: ble)
+        ..client = session
+        ..ready = true
+        ..selectedId = 'synthetic';
+      addTearDown(model.dispose);
+      ble.writes.clear();
+      await tester.pumpWidget(NaviaApp(model: model));
+      await tester.tap(find.text('Diagnostika'));
+      await tester.pumpAndSettle();
+      final label = kind == DeviceReset.factory
+          ? 'Obnovit tovární nastavení'
+          : 'Resetovat Bluetooth';
+      final reset = find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((widget) => widget is OutlinedButton),
+      );
+      await tester.scrollUntilVisible(reset, 250);
+      await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      if (kind == DeviceReset.factory) {
+        expect(
+          find.textContaining('smaže individuální nastavení'),
+          findsOneWidget,
+        );
+      }
+      expect(model.resets, isEmpty);
+      await tester.tap(find.widgetWithText(TextButton, 'Zpět'));
+      await tester.pumpAndSettle();
+      expect(model.resets, isEmpty);
+      await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Potvrdit'));
+      await tester.pumpAndSettle();
+      expect(model.resets, [kind]);
+      expect(ble.writes, isEmpty);
+    });
+  }
   testWidgets('language changes all navigation labels', (tester) async {
     final model = AppModel(ble: FakeMobileBle())..english = true;
     await tester.pumpWidget(NaviaApp(model: model));

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 OpenLauf contributors
+
 import 'dart:async';
 import 'noventa_protocol.dart';
 

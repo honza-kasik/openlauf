@@ -1,8 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 OpenLauf contributors
+
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:noventa_protocol/mobile_ble.dart';
 import 'package:noventa_protocol/noventa_protocol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'reactive_ble_backend.dart';
 
 class AppModel extends ChangeNotifier {
@@ -11,7 +16,7 @@ class AppModel extends ChangeNotifier {
     : ble = ble ?? PluginBleTransport(ReactiveBleBackend());
   NaviaClient? client;
   bool english = false, busy = false, scanning = false, ready = false;
-  bool stopping = false;
+  bool stopping = false, resetting = false;
   String stage = 'Offline', error = '';
   final Map<String, Map<dynamic, dynamic>> devices = {};
   String? selectedId, _resumeId;
@@ -73,8 +78,76 @@ class AppModel extends ChangeNotifier {
       _foreground &&
       ready &&
       !stopping &&
+      !resetting &&
       client?.connected == true &&
       client?.state?.descaling != true;
+
+  bool get canReset =>
+      !_disposed &&
+      _foreground &&
+      ready &&
+      !busy &&
+      !stopping &&
+      !resetting &&
+      client?.canReset == true;
+
+  Future<void> resetDevice(DeviceReset kind) async {
+    if (!canReset) return;
+    final session = client!;
+    final previousId = selectedId;
+    final lifecycle = _lifecycle;
+    await run(() async {
+      resetting = true;
+      // Pausing during the attempt must not schedule an automatic reconnect.
+      selectedId = null;
+      _resumeId = null;
+      _resumePending = false;
+      changed();
+      late ResetResult result;
+      try {
+        result = await session.resetDevice(kind);
+      } finally {
+        resetting = false;
+        if (identical(client, session)) {
+          if (session.connected) {
+            selectedId = previousId;
+          } else {
+            _generation++;
+            _poll?.cancel();
+            ready = false;
+            stage = 'Offline';
+            devices.clear();
+            final updates = _updates;
+            _updates = null;
+            client = null;
+            Object? cleanupFailure;
+            _cleanup = _cleanup
+                .then((_) => _release(null, updates, session))
+                .catchError((Object e) {
+                  cleanupFailure = e;
+                });
+            await _cleanup;
+            if (cleanupFailure != null) throw cleanupFailure!;
+          }
+        }
+        if (!session.connected) {
+          await _preferences?.remove('selectedDevice');
+        }
+      }
+      if (_disposed || !_foreground || lifecycle != _lifecycle) return;
+      stage = t('Vyhledej WC znovu', 'Scan for the toilet again');
+      error = result == ResetResult.acknowledged
+          ? t(
+              'Zařízení potvrdilo příkaz resetu. Nech ho dokončit náběh a potom WC znovu vyhledej.',
+              'The device acknowledged the reset command. Let it finish starting up, then scan again.',
+            )
+          : t(
+              'Reset nebyl potvrzený; výsledek není známý. Příkaz nebyl zopakován. Nech WC dokončit náběh a znovu ho vyhledej.',
+              'The reset was not acknowledged; its outcome is unknown. The command was not retried. Let the toilet finish starting up, then scan again.',
+            );
+      changed();
+    });
+  }
 
   Future<void> stopShower() async {
     if (!canStop) return;

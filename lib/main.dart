@@ -1,6 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 OpenLauf contributors
+
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:noventa_protocol/noventa_protocol.dart';
+
 import 'controller.dart';
 
 Future<void> main() async {
@@ -115,7 +121,7 @@ class _NaviaAppState extends State<NaviaApp> with WidgetsBindingObserver {
                         0 => controls(),
                         1 => settings(),
                         2 => maintenance(context),
-                        _ => diagnostics(),
+                        _ => diagnostics(context),
                       },
                     ],
                   ),
@@ -450,7 +456,40 @@ class _NaviaAppState extends State<NaviaApp> with WidgetsBindingObserver {
     ];
   }
 
-  List<Widget> diagnostics() => [
+  Widget resetButton(BuildContext context, DeviceReset kind) {
+    final factory = kind == DeviceReset.factory;
+    final title = factory
+        ? t('Obnovit tovární nastavení', 'Restore factory settings')
+        : t('Resetovat Bluetooth', 'Reset Bluetooth');
+    return OutlinedButton.icon(
+      onPressed: m.canReset
+          ? () async {
+              final session = m.client;
+              if (!await confirm(
+                context,
+                title,
+                factory
+                    ? t(
+                        'Reset smaže individuální nastavení WC. Spojení se ukončí a WC bude potřeba znovu vyhledat. Pokračovat?',
+                        'This resets the toilet’s individual settings. The connection will close and you will need to scan for the toilet again. Continue?',
+                      )
+                    : t(
+                        'Resetuje se Bluetooth komunikace a spojení se ukončí. Potom bude potřeba WC znovu vyhledat. Pokračovat?',
+                        'Bluetooth communication will reset and the connection will close. You will need to scan for the toilet again. Continue?',
+                      ),
+              )) {
+                return;
+              }
+              if (!identical(session, m.client) || !m.canReset) return;
+              await m.resetDevice(kind);
+            }
+          : null,
+      icon: Icon(factory ? Icons.settings_backup_restore : Icons.bluetooth),
+      label: Text(title),
+    );
+  }
+
+  List<Widget> diagnostics(BuildContext context) => [
     section(t('Zařízení', 'Device'), [
       Text('Firmware: ${m.client?.info?.firmware ?? "—"}'),
       Text('${t("Model", "Article")}: ${m.client?.info?.article ?? "—"}'),
@@ -471,6 +510,16 @@ class _NaviaAppState extends State<NaviaApp> with WidgetsBindingObserver {
             : null,
         child: Text(t('Načíst alarmy', 'Read alarms')),
       ),
+    ]),
+    section(t('Reset zařízení', 'Device reset'), [
+      Text(
+        t(
+          'Reset je dostupný pouze v pohotovosti nebo připraveném stavu. Jeho chování na skutečném WC zatím není ověřené; odstranění závady nezaručuje.',
+          'Reset is available only in standby or ready state. Its behavior on a physical toilet has not been verified; it is not guaranteed to resolve a fault.',
+        ),
+      ),
+      resetButton(context, DeviceReset.bluetooth),
+      resetButton(context, DeviceReset.factory),
     ]),
     section(t('Záznam spojení', 'Connection log'), [
       Text(

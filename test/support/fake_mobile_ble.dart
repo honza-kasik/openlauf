@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:noventa_protocol/mobile_ble.dart';
 import 'package:noventa_protocol/noventa_protocol.dart';
 
 class FakeMobileBle implements MobileBleTransport {
   bool allowed = true;
-  int scans = 0, stateCode = 2;
+  int scans = 0, stateCode = 2, disconnects = 0;
+  bool dropOnReset = false;
+  Completer<void>? resetGate;
   Completer<void>? disconnectGate;
   Completer<bool>? permissionGate;
   final connectedIds = <String>[];
@@ -37,6 +40,15 @@ class FakeMobileBle implements MobileBleTransport {
       writes.add(frame);
       if (frame.command >= 0x80) continue;
       final p = frame.payload;
+      final resetting =
+          frame.command == 0x17 || (frame.command == 0x26 && p.first == 0x52);
+      if (resetting) {
+        await resetGate?.future;
+        if (dropOnReset) {
+          incoming.addError(ProtocolException('Reset disconnected the device'));
+          continue;
+        }
+      }
       final payload = switch (frame.command) {
         2 => [1],
         0x20 => [
@@ -67,6 +79,7 @@ class FakeMobileBle implements MobileBleTransport {
 
   @override
   Future<void> disconnect() async {
+    disconnects++;
     await disconnectGate?.future;
   }
 

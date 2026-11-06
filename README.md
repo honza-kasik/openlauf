@@ -3,12 +3,13 @@
 <img src="assets/branding/openlauf.png" width="96" height="96" alt="OpenLauf icon">
 
 Independent local Bluetooth controller targeting compatibility with
-**LAUFEN Cleanet Navia**. Android 8+
-(API 26, target API 36) and iOS 13+. Primary Android hardware acceptance target:
-Pixel 9. Czech/English UI, system light/dark theme. MIT licensed.
+**LAUFEN Cleanet Navia**, focused on the current Android version and iOS 13+.
+The analyzed official app (1.7.60) targets Android 15 (API 35).
+Czech/English UI, system light/dark theme.
+Licensed under GPLv3 (`GPL-3.0-only`).
 
-**Experimental: physical BLE and descaling acceptance tests have not yet been
-performed. Not affiliated with or endorsed by LAUFEN.**
+**Experimental: full physical BLE and descaling acceptance remains pending.
+Not affiliated with or endorsed by LAUFEN.**
 
 ## Implemented
 
@@ -19,6 +20,8 @@ performed. Not affiliated with or endorsed by LAUFEN.**
 - Descaling preparation/continuation, device-based phases and remaining time,
   automatic-start detection, resynchronization after returning from background.
 - Nozzle service position, appliance flushing, product info and raw alarm reads.
+- Factory and Bluetooth resets with confirmation, idle-state checks, session
+  invalidation and manual reconnection; reset commands are never replayed.
 - Redacted diagnostic copy: metadata only, never device identifiers or payloads.
 
 The UI, protocol and connection lifecycle are shared by Android and iOS.
@@ -36,10 +39,14 @@ and reads state without replaying actions.
 
 ## Build and test
 
-Flutter 3.47.7 / Dart 3.13.5, JDK 17 or 21, Android SDK 37, Gradle 9.8.2,
+Flutter 3.47.7 / Dart 3.13.5, JDK 17 or 21, Android compile/target SDK 37, Gradle 9.8.2,
 Android Gradle Plugin 9.5.1, Kotlin 2.4.21.
 Run `flutter pub get` with network access to fetch the dependencies in
 `pubspec.lock`. BLE plugin 5.6.0 supports AGP 9 and Android SDK 37.
+Android uses AGP 9's built-in Kotlin support. The BLE plugin still requires
+`android.newDsl=false`; Protobuf Gradle plugin `0.10.1` is pinned in the shared
+plugin classpath because its requested `0.9.4` cannot configure AGP 9 variants.
+The Gradle wrapper scripts and bootstrap JAR are tracked in the repository.
 Use a checkout path without apostrophes: the Dart test runner currently generates
 invalid imports for such paths. Android SDK/Flutter/pub/Gradle caches must be writable.
 
@@ -54,9 +61,11 @@ flutter test
 flutter build apk --debug
 ```
 
-Install `build/app/outputs/flutter-apk/app-debug.apk` on the Pixel 9. CI uses a
-standalone Dart SDK to analyze and test the protocol package on pull requests
-or manual runs. Run Flutter checks and platform builds locally.
+Install `build/app/outputs/flutter-apk/app-debug.apk` on a physical device running
+the current Android version. CI uses a standalone Dart SDK to analyze and test
+the protocol package on pull requests or manual runs. It installs Dart and the
+protocol package's locked dependencies. Run Flutter checks and platform builds
+locally.
 
 For a signed release, create your own signing key outside the repository and
 set `android/key.properties` with `storeFile`, `storePassword`, `keyAlias`, and
@@ -100,20 +109,27 @@ require a permanent background connection and closing it sends no cancel action.
 
 ## Evidence and remaining work
 
-See [protocol documentation](docs/protocol.md). Captured traffic verifies auth,
-rear start/stop and notifications. Other commands derive from static analysis
-and need physical validation. Duration writes remain disabled because original
-metadata conflicts; existing values are displayed without overwriting them.
+See [protocol documentation](docs/protocol.md) and
+[models, differences, and support](docs/models-and-support.md). Captured traffic
+verifies auth, rear start/stop and notifications. Other commands derive from
+static analysis and need physical validation. Duration writes remain disabled
+because original metadata conflicts; existing values are displayed without
+overwriting them.
 Shared Riva dryer/flush/production commands are not advertised as Navia features.
 Manufacturer cloud accounts, firmware flashing and original graphics are not included.
 
-Local verification: 44 pure Dart protocol/session/transport tests and all 18
+The BLE handshake uses the original app's shared service identifier rather than
+an owner-specific credential. See [authentication and access control](docs/protocol.md#authentication-and-access-control)
+for the evidence and remaining security checks.
+
+Local verification: 54 pure Dart protocol/session/transport tests and all 25
 Flutter controller/backend/widget tests passed. Whole-app analysis and an Android
 debug APK build also passed. Tests cover write failures and stale replies,
 priority Stop, descaling guards, cancellation, reconnects and manufacturer-only
 advertisements. Flutter tests inject a fake BLE transport or plugin facade.
-The debug APK was installed on a Pixel 9. Physical BLE/descaling acceptance and
-iOS builds remain unverified; iOS builds require macOS/Xcode.
+The debug APK was installed on a physical Android device. Full physical
+BLE/descaling acceptance and iOS builds remain unverified; iOS builds require
+macOS/Xcode.
 
 ## App icon
 
@@ -124,3 +140,19 @@ The script requires `rsvg-convert` (librsvg) and Pillow.
 
 Original APKs, captures and bugreports stay outside this project. Public test
 fixtures contain only selected protocol vectors and synthetic device information.
+
+## License
+
+Copyright (c) 2026 OpenLauf contributors.
+
+OpenLauf, including the standalone `noventa_protocol` BLE library, is licensed
+under the GNU General Public License version 3 only (`GPL-3.0-only`). See the
+[project license](LICENSE) and the [library's license](packages/noventa_protocol/LICENSE).
+
+When distributing a modified or combined derivative program, the covered work
+must remain under GPLv3 and its recipients must be able to obtain the
+Corresponding Source under GPLv3. Commercial use and charging for copies are
+allowed. Third-party dependencies retain their respective licenses.
+
+If an earlier version was already provided under MIT, this change does not
+revoke permissions for that version.

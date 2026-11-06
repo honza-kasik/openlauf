@@ -13,6 +13,8 @@ class FakeTransport implements BleTransport {
   final writes = <Frame>[];
   final decoder = FrameDecoder();
   bool autoReply = true;
+  bool dropOnReset = false, acknowledgeReset = true;
+  int? notifyAfterStateRead;
   int state = 2, disconnects = 0, timer = 3600;
   int? reject;
   Object? writeError;
@@ -33,6 +35,13 @@ class FakeTransport implements BleTransport {
         receive(Frame(f.command | 128, [4]));
         continue;
       }
+      final resetting =
+          f.command == 0x17 || (f.command == 0x26 && f.payload.first == 0x52);
+      if (resetting && dropOnReset) {
+        incoming.addError(ProtocolException('Reset disconnected the device'));
+        continue;
+      }
+      if (resetting && !acknowledgeReset) continue;
       List<int> payload;
       switch (f.command) {
         case 2:
@@ -75,6 +84,9 @@ class FakeTransport implements BleTransport {
           payload = [];
       }
       receive(Frame(f.command | 128, [0, ...payload]));
+      if (f.command == 0x21 && notifyAfterStateRead != null) {
+        receive(Frame(0x22, [notifyAfterStateRead!, 0, 0, 0, 0]));
+      }
     }
   }
 
@@ -184,6 +196,133 @@ void main() {
       expect(client.settings[0x10], 2);
       expect(client.remainingSeconds, 3600);
     });
+    for (final kind in DeviceReset.values) {
+      test(
+        '${kind.name} reset sends once and invalidates the session',
+        () async {
+          await client.initialize();
+          transport.writes.clear();
+          expect(await client.resetDevice(kind), ResetResult.acknowledged);
+          expect(transport.writes.map((f) => f.command), [
+            0x21,
+            kind == DeviceReset.factory ? 0x26 : 0x17,
+          ]);
+          expect(
+            transport.writes.last.payload,
+            kind == DeviceReset.factory ? [0x52, 0] : isEmpty,
+          );
+          expect(client.connected, isFalse);
+          expect(transport.disconnects, greaterThan(0));
+          await expectLater(
+            client.action(2),
+            throwsA(isA<ProtocolException>()),
+          );
+          expect(transport.writes, hasLength(2));
+        },
+      );
+      test(
+        '${kind.name} reset handles link loss without claiming success',
+        () async {
+          await client.initialize();
+          transport.writes.clear();
+          transport.dropOnReset = true;
+          expect(await client.resetDevice(kind), ResetResult.unconfirmed);
+          expect(client.connected, isFalse);
+          expect(transport.writes, hasLength(2));
+        },
+      );
+    }
+    test('reset reply timeout is unconfirmed and never retried', () async {
+      await client.initialize();
+      transport.writes.clear();
+      transport.acknowledgeReset = false;
+      expect(
+        await client.resetDevice(DeviceReset.factory),
+        ResetResult.unconfirmed,
+      );
+      expect(client.connected, isFalse);
+      expect(transport.writes, hasLength(2));
+    });
+    test('explicitly rejected reset is reported as a rejection', () async {
+      await client.initialize();
+      transport.reject = 0x26;
+      await expectLater(
+        client.resetDevice(DeviceReset.factory),
+        throwsA(
+          isA<ProtocolException>().having(
+            (e) => e.message,
+            'message',
+            contains('Device rejected command'),
+          ),
+        ),
+      );
+      expect(client.connected, isFalse);
+    });
+    test('reset requires a known idle Navia', () async {
+      await expectLater(
+        client.resetDevice(DeviceReset.factory),
+        throwsA(isA<ProtocolException>()),
+      );
+      expect(transport.writes, isEmpty);
+      await client.initialize();
+      transport.writes.clear();
+      for (final code in [3, 4, 12, 13, 15, 16, 17, 28]) {
+        client.state = DeviceState(code, 0, 0, 0, 0);
+        await expectLater(
+          client.resetDevice(DeviceReset.bluetooth),
+          throwsA(isA<ProtocolException>()),
+        );
+      }
+      expect(transport.writes, isEmpty);
+    });
+    test('reset refreshes state and refuses a newly active cycle', () async {
+      await client.initialize();
+      transport.writes.clear();
+      transport.state = 16;
+      await expectLater(
+        client.resetDevice(DeviceReset.factory),
+        throwsA(isA<ProtocolException>()),
+      );
+      expect(transport.writes.map((f) => f.command), [0x21]);
+      expect(client.connected, isTrue);
+      await client.readState();
+    });
+    test(
+      'newer state notification prevents reset despite an idle read reply',
+      () async {
+        await client.initialize();
+        transport.writes.clear();
+        transport.notifyAfterStateRead = 16;
+        await expectLater(
+          client.resetDevice(DeviceReset.factory),
+          throwsA(isA<ProtocolException>()),
+        );
+        expect(client.state!.code, 16);
+        expect(
+          transport.writes.where((f) => f.command == 0x26 || f.command == 0x17),
+          isEmpty,
+        );
+      },
+    );
+    test(
+      'reset blocks duplicate attempts and unsent ordinary actions',
+      () async {
+        await client.initialize();
+        transport.writes.clear();
+        final action = expectLater(
+          client.action(2),
+          throwsA(isA<ProtocolException>()),
+        );
+        final reset = client.resetDevice(DeviceReset.factory);
+        final duplicate = expectLater(
+          client.resetDevice(DeviceReset.factory),
+          throwsA(isA<ProtocolException>()),
+        );
+        await Future.wait([action, duplicate, reset]);
+        expect(transport.writes.map((f) => f.command), [0x21, 0x26]);
+        expect(transport.writes.last.payload, [0x52, 0]);
+      },
+    );
     test('event ACK bypasses outstanding request and updates state', () async {
       transport.autoReply = false;
       final request = client.readState();

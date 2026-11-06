@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 OpenLauf contributors
+
 library;
 
 import 'dart:async';
@@ -131,6 +134,15 @@ class ProtocolException implements Exception {
   String toString() => message;
 }
 
+class _CommandRejected extends ProtocolException {
+  _CommandRejected(int command, int status)
+    : super('Device rejected command 0x${command.toRadixString(16)}: $status');
+}
+
+enum DeviceReset { bluetooth, factory }
+
+enum ResetResult { acknowledged, unconfirmed }
+
 class DeviceInfo {
   final String firmware, article, serial;
   final int model, flags;
@@ -180,9 +192,15 @@ class _QueuedRequest {
   final int command;
   final List<int> payload;
   final void Function()? beforeSend;
+  final bool resetOperation, closeAfterReply;
   final result = Completer<List<int>>();
-  _QueuedRequest(this.command, List<int> payload, this.beforeSend)
-    : payload = List.unmodifiable(payload);
+  _QueuedRequest(
+    this.command,
+    List<int> payload,
+    this.beforeSend, {
+    this.resetOperation = false,
+    this.closeAfterReply = false,
+  }) : payload = List.unmodifiable(payload);
 }
 
 /// One outstanding request, because replies have no transaction identifier.
@@ -203,6 +221,8 @@ class NaviaClient {
   bool _processing = false;
   Future<void> _writes = Future.value();
   bool _closed = false;
+  bool _resetRequested = false;
+  int _stateNotifications = 0;
   DeviceInfo? info;
   DeviceState? state;
   int? remainingSeconds;
@@ -219,6 +239,8 @@ class NaviaClient {
   }
 
   bool get connected => !_closed;
+  bool get canReset =>
+      connected && info?.isNavia == true && const [1, 2].contains(state?.code);
   void _log(String message) {
     diagnostics.add('${DateTime.now().toIso8601String()} $message');
     if (diagnostics.length > 200) diagnostics.removeAt(0);
@@ -271,7 +293,10 @@ class NaviaClient {
               Frame(frame.command | 0x80, [0]),
             ).catchError((Object e) => _fail(e)),
           );
-          if (frame.command == 0x22) state = DeviceState.parse(frame.payload);
+          if (frame.command == 0x22) {
+            state = DeviceState.parse(frame.payload);
+            _stateNotifications++;
+          }
           if (frame.command == 0x24 && frame.payload.length == 3) {
             final p = frame.payload;
             if (p[0] == 0) profile[p[1]] = p[2];
@@ -302,8 +327,19 @@ class NaviaClient {
     List<int> payload, {
     bool priority = false,
     void Function()? beforeSend,
+    bool resetOperation = false,
+    bool closeAfterReply = false,
   }) {
-    final request = _QueuedRequest(command, payload, beforeSend);
+    if (_resetRequested && !resetOperation) {
+      return Future.error(ProtocolException('Device reset is pending'));
+    }
+    final request = _QueuedRequest(
+      command,
+      payload,
+      beforeSend,
+      resetOperation: resetOperation,
+      closeAfterReply: closeAfterReply,
+    );
     (priority ? _priorityRequests : _requests).add(request);
     if (!_processing) {
       _processing = true;
@@ -329,6 +365,9 @@ class NaviaClient {
 
   Future<List<int>> _exchange(_QueuedRequest request) async {
     if (_closed) throw ProtocolException('Disconnected');
+    if (_resetRequested && !request.resetOperation) {
+      throw ProtocolException('Device reset is pending');
+    }
     request.beforeSend?.call();
     final response = Completer<Frame>();
     _response = response;
@@ -359,11 +398,53 @@ class NaviaClient {
       throw error;
     }
     if (frame.payload.first != 0) {
-      throw ProtocolException(
-        'Device rejected command 0x${request.command.toRadixString(16)}: ${frame.payload.first}',
-      );
+      throw _CommandRejected(request.command, frame.payload.first);
     }
+    if (request.closeAfterReply) _fail(ProtocolException('Reset requested'));
     return frame.payload.sublist(1);
+  }
+
+  void _requireResettable() {
+    if (!canReset) {
+      throw ProtocolException('Reset requires an idle, connected Navia');
+    }
+  }
+
+  /// Send one reset attempt and invalidate the session. A link loss or failed
+  /// write cannot prove whether a reset was accepted, so it is never retried.
+  Future<ResetResult> resetDevice(DeviceReset kind) async {
+    if (_resetRequested) {
+      throw ProtocolException('Device reset is already pending');
+    }
+    _requireResettable();
+    _resetRequested = true;
+    var attempted = false;
+    try {
+      await _readState(resetOperation: true);
+      _requireResettable();
+      await _enqueue(
+        kind == DeviceReset.factory ? 0x26 : 0x17,
+        kind == DeviceReset.factory ? [0x52, 0] : [],
+        resetOperation: true,
+        closeAfterReply: true,
+        beforeSend: () {
+          _requireResettable();
+          attempted = true;
+        },
+      );
+      return ResetResult.acknowledged;
+    } on _CommandRejected {
+      rethrow;
+    } catch (_) {
+      if (attempted) return ResetResult.unconfirmed;
+      rethrow;
+    } finally {
+      if (attempted) {
+        _fail(ProtocolException('Reset requested'));
+      } else {
+        _resetRequested = false;
+      }
+    }
   }
 
   Future<void> initialize() async {
@@ -394,8 +475,16 @@ class NaviaClient {
     await readTimer();
   }
 
-  Future<void> readState() async {
-    state = DeviceState.parse(await request(0x21, [255]));
+  Future<void> readState() => _readState();
+
+  Future<void> _readState({bool resetOperation = false}) async {
+    final notifications = _stateNotifications;
+    final response = DeviceState.parse(
+      await _enqueue(0x21, [255], resetOperation: resetOperation),
+    );
+    // A state notification received while awaiting this reply is newer than
+    // the requested snapshot and must not be overwritten by it.
+    if (_stateNotifications == notifications) state = response;
     _changed();
   }
 
