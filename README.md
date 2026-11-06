@@ -153,6 +153,3 @@ When distributing a modified or combined derivative program, the covered work
 must remain under GPLv3 and its recipients must be able to obtain the
 Corresponding Source under GPLv3. Commercial use and charging for copies are
 allowed. Third-party dependencies retain their respective licenses.
-
-If an earlier version was already provided under MIT, this change does not
-revoke permissions for that version.
