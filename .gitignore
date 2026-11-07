@@ -1,0 +1,84 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+__pycache__/
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# Local credentials, signing material and agent configuration
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+.aws/
+.codex/
+.agents/
+.serena/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+**/.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+*.apk
+*.aab
+*.jks
+*.keystore
+android/key.properties
+*.cfa
+*.zip
+*.hbc
+*.pcap
+*.pcapng
+*.btsnoop
+*.har
+btsnoop_hci*
+*bugreport*
+
+# Original app artifacts and private reverse-engineering inputs
+/base/
+/FS/
+/hermes-dec/
+/lshal-debug/
+/proto/
+/bundle.js
+/dumpstate_log.txt
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release

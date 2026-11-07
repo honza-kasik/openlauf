@@ -1,0 +1,17 @@
+name: Protocol checks
+on: [pull_request, workflow_dispatch]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/noventa_protocol
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.5'
+      - run: dart pub get --enforce-lockfile
+      - run: |
+          dart analyze
+          dart test
